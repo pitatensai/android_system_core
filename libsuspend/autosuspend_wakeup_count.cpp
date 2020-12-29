@@ -47,10 +47,16 @@ using android::base::WriteStringToFd;
 static pthread_t suspend_thread;
 static sem_t suspend_lockout;
 static constexpr char sleep_state[] = "mem";
+static constexpr char idle_state[] = "idle";
 static void (*wakeup_func)(bool success) = NULL;
 static int sleep_time = BASE_SLEEP_TIME;
 static constexpr char sys_power_state[] = "/sys/power/state";
 static constexpr char sys_power_wakeup_count[] = "/sys/power/wakeup_count";
+static constexpr char ebc_state[] = "/sys/devices/platform/ebc-dev/ebc_state";
+static constexpr char usb_online_state[] = "/sys/class/power_supply/usb/online";
+static constexpr char ac_online_state[] = "/sys/class/power_supply/ac/online";
+static constexpr char bt_state[] = "/sys/class/rfkill/rfkill0/state";
+static constexpr char wifi_state[] = "/sys/class/net/wlan0/carrier";
 static bool autosuspend_is_init = false;
 
 static void update_sleep_time(bool success) {
@@ -224,11 +230,163 @@ static void autosuspend_set_wakeup_callback(void (*func)(bool success)) {
     wakeup_func = func;
 }
 
+//idle start-------------------------------------------------------------------------------
+#if 0
+// 1:open 0:close
+static int get_wifi_state(void)
+{
+    char prop[255];
+    bool noidle;
+
+    property_get("sys.wifi.noidle", prop, "0");
+    noidle = (prop[0] == '1');
+
+    return (noidle == 1) ? 1 : 0;
+}
+#else
+// 1:open  0:close
+static int get_wifi_state(void)
+{
+    int ret = 0;
+    char state = 0;
+
+    int fd = open(wifi_state, O_RDONLY);
+    if (fd > 0) {
+        ret = read(fd, &state, 1);
+        if (ret < 0)
+            LOG(ERROR) << "Error reading from " << wifi_state << ":" << strerror(ret);
+        close(fd);
+    }
+
+    return (state == '1') ? 1 : 0;
+}
+#endif
+
+// 1:open  0:close
+static int get_bt_state(void)
+{
+    int ret = 0;
+    char state = 0;
+
+    int fd = open(bt_state, O_RDONLY);
+    if (fd > 0) {
+        ret = read(fd, &state, 1);
+        if (ret < 0)
+            LOG(ERROR) << "Error reading from " << bt_state << ":" << strerror(ret);
+        close(fd);
+    }
+
+    return (state == '1') ? 1 : 0;
+}
+
+// 1:idle 0:busy
+static int get_ebc_state(void)
+{
+    int ret = 0;
+    char state = '0';
+
+    int fd = open(ebc_state, O_RDONLY);
+    if (fd > 0) {
+        ret = read(fd, &state, 1);
+        if (ret < 0)
+            LOG(ERROR) << "Error reading from " << ebc_state << ":" << strerror(ret);
+        close(fd);
+    }
+
+    return (state == '1') ? 1 : 0;
+}
+
+// 1: power online  0: power offline
+static int get_charge_state(void)
+{
+    char buf = 0;
+    char buf1 = 0;
+    int ret;
+
+    int fd = open(usb_online_state, O_RDONLY);
+    if (fd > 0) {
+        ret = read(fd, &buf, 1);
+        if (ret < 0)
+            LOG(ERROR) << "Error reading from " << usb_online_state << ":" << strerror(ret);
+        close(fd);
+    }
+
+    int fd1 = open(ac_online_state, O_RDONLY);
+    if (fd1 > 0) {
+        ret = read(fd1, &buf1, 1);
+        if (ret < 0)
+            LOG(ERROR) << "Error reading from " << ac_online_state << ":" << strerror(ret);
+        close(fd1);
+    }
+
+    return (buf == '1' || buf1 == '1');
+}
+
+static int get_poweroff_state(void)
+{
+#if 1
+    return 0;
+#else
+    char prop[255];
+
+    // 0: normal poweroff 1: lower poweroff  -1: not in poweroff state
+    property_get("sys.shutdown.nopower", prop, "-1");
+    bool noidle = ((prop[0] == '1') || (prop[0] == '0'));
+
+    return (noidle == 1) ? 1 : 0;
+#endif
+}
+
+static int autosuspend_wakeup_count_idle(int screen_on)
+{
+    char buf[80];
+    int ret;
+    int ebc_state, charge_state, wifi_state, bt_state, poweroff_state;
+
+    ret = init_state_fd();
+    if (ret < 0) {
+        return ret;
+    }
+
+    ebc_state = get_ebc_state();
+    charge_state = get_charge_state();
+    wifi_state = get_wifi_state();
+    bt_state = get_bt_state();
+    poweroff_state = get_poweroff_state();
+
+    LOG(ERROR) << "autosuspend_idle: screen_on = " <<  screen_on << " wifi_state = "
+        << wifi_state << " bt_state = " << bt_state << " charge_state = " << charge_state
+        << " poweroff_state = " << poweroff_state << " ebc_state = " << ebc_state;
+
+    if ((wifi_state == 1) || (bt_state == 1) || (charge_state == 1) || (poweroff_state == 1) || (ebc_state == 1))
+        return 0;
+
+    if (screen_on) {
+        ret = WriteStringToFd(idle_state, state_fd);
+        if (ret)
+            LOG(ERROR) << "Error writing" << idle_state << "to" << sys_power_state << ":" << strerror(ret);
+    }
+    //else {
+     //   ret = WriteStringToFd(sleep_state, state_fd);
+     //   if (ret)
+     //       LOG(ERROR) << "Error writing" << sleep_state << "to" << sys_power_state << ":" << strerror(ret);
+    //}
+    return ret;
+}
+
+static int autosuspend_wakeup_count_wake(void)
+{
+    return 0;
+}
+//idle end-------------------------------------------------------------------------------------------------------------------
+
 struct autosuspend_ops autosuspend_wakeup_count_ops = {
     .enable = autosuspend_wakeup_count_enable,
     .disable = autosuspend_wakeup_count_disable,
     .force_suspend = force_suspend,
     .set_wakeup_callback = autosuspend_set_wakeup_callback,
+    .idle = autosuspend_wakeup_count_idle,
+    .wake = autosuspend_wakeup_count_wake,
 };
 
 struct autosuspend_ops* autosuspend_wakeup_count_init(void) {
