@@ -113,3 +113,38 @@ void autosuspend_set_wakeup_callback(void (*func)(bool success)) {
 
     autosuspend_ops->set_wakeup_callback(func);
 }
+
+int autosuspend_idle(int screen_on)
+{
+    int ret;
+
+    ret = autosuspend_init();
+    if (ret) {
+        return ret;
+    }
+
+    ret = autosuspend_ops->idle(screen_on);
+    if (ret) {
+        return ret;
+    }
+
+    return 0;
+}
+
+int autosuspend_wake(void)
+{
+    int ret;
+
+    ret = autosuspend_init();
+    if (ret) {
+        return ret;
+    }
+
+    ret = autosuspend_ops->wake();
+    if (ret) {
+        return ret;
+    }
+
+    return 0;
+}
+
