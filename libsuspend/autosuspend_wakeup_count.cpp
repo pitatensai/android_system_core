@@ -364,12 +364,12 @@ static int autosuspend_wakeup_count_idle(int screen_on)
     if (screen_on) {
         ret = WriteStringToFd(idle_state, state_fd);
         if (ret)
-            LOG(ERROR) << "Error writing" << idle_state << "to" << sys_power_state << ":" << strerror(ret);
+            LOG(ERROR) << "Error writing " << idle_state << " to " << sys_power_state << ":" << strerror(ret);
     }
     //else {
      //   ret = WriteStringToFd(sleep_state, state_fd);
      //   if (ret)
-     //       LOG(ERROR) << "Error writing" << sleep_state << "to" << sys_power_state << ":" << strerror(ret);
+     //       LOG(ERROR) << "Error writing " << sleep_state << " to " << sys_power_state << ":" << strerror(ret);
     //}
     return ret;
 }
