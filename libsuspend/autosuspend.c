@@ -25,7 +25,6 @@
 #include "autosuspend_ops.h"
 
 static struct autosuspend_ops* autosuspend_ops = NULL;
-static bool autosuspend_enabled;
 
 static int autosuspend_init(void) {
     if (autosuspend_ops != NULL) {
@@ -38,7 +37,7 @@ static int autosuspend_init(void) {
         return -1;
     }
 
-    ALOGV("autosuspend initialized");
+    ALOGE("autosuspend initialized");
     return 0;
 }
 
@@ -50,18 +49,13 @@ int autosuspend_enable(void) {
         return ret;
     }
 
-    ALOGV("autosuspend_enable");
-
-    if (autosuspend_enabled) {
-        return 0;
-    }
+    ALOGE("autosuspend_enable");
 
     ret = autosuspend_ops->enable();
     if (ret) {
         return ret;
     }
 
-    autosuspend_enabled = true;
     return 0;
 }
 
@@ -73,18 +67,13 @@ int autosuspend_disable(void) {
         return ret;
     }
 
-    ALOGV("autosuspend_disable");
-
-    if (!autosuspend_enabled) {
-        return 0;
-    }
+    ALOGE("autosuspend_disable");
 
     ret = autosuspend_ops->disable();
     if (ret) {
         return ret;
     }
 
-    autosuspend_enabled = false;
     return 0;
 }
 
@@ -96,7 +85,7 @@ int autosuspend_force_suspend(int timeout_ms) {
         return ret;
     }
 
-    ALOGV("autosuspend_force_suspend");
+    ALOGE("autosuspend_force_suspend");
 
     return autosuspend_ops->force_suspend(timeout_ms);
 }
@@ -109,24 +98,20 @@ void autosuspend_set_wakeup_callback(void (*func)(bool success)) {
         return;
     }
 
-    ALOGV("set_wakeup_callback");
+    ALOGE("set_wakeup_callback");
 
     autosuspend_ops->set_wakeup_callback(func);
 }
 
-int autosuspend_idle(int screen_on)
+int autosuspend_idle(int on)
 {
     int ret;
+   
+    ALOGE("======autosuspend_idle screen_on %d", on);
+    autosuspend_ops->idle(on);
 
-    ret = autosuspend_init();
-    if (ret) {
-        return ret;
-    }
-
-    ret = autosuspend_ops->idle(screen_on);
-    if (ret) {
-        return ret;
-    }
+    if (on)
+	    autosuspend_enable();
 
     return 0;
 }
