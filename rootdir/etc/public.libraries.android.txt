@@ -27,3 +27,9 @@ libvulkan.so
 libwebviewchromium_plat_support.so
 libz.so
 librknnhal_bridge.so nopreload
+libandroid_runtime.so
+libcutils.so
+libc++.so
+libnativehelper.so
+libutils.so
+libbase.so
