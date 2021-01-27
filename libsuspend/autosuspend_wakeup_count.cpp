@@ -38,6 +38,7 @@
 #define MAX_SLEEP_TIME 60000000
 
 static int state_fd = -1;
+static int memsleep_fd = -1;
 static int wakeup_count_fd;
 
 using android::base::ReadFdToString;
@@ -47,9 +48,10 @@ using android::base::WriteStringToFd;
 static pthread_t suspend_thread;
 static sem_t suspend_lockout;
 static constexpr char sleep_state[] = "mem";
-static constexpr char idle_state[] = "idle";
+static constexpr char idle_memsleep[] = "lite";
 static void (*wakeup_func)(bool success) = NULL;
 static int sleep_time = BASE_SLEEP_TIME;
+static constexpr char sys_power_memsleep[] = "/sys/power/mem_sleep";
 static constexpr char sys_power_state[] = "/sys/power/state";
 static constexpr char sys_power_wakeup_count[] = "/sys/power/wakeup_count";
 static constexpr char ebc_state[] = "/sys/devices/platform/ebc-dev/ebc_state";
@@ -103,18 +105,26 @@ static void* suspend_thread_func(void* arg __attribute__((unused))) {
 
         LOG(ERROR) << "write " << wakeup_count << " to wakeup_count " << start_idle;
         if (WriteStringToFd(wakeup_count, wakeup_count_fd) && start_idle) {
-            LOG(ERROR) << "write " << idle_state << " to " << sys_power_state;
-            success = WriteStringToFd(idle_state, state_fd);
-
+            LOG(ERROR) << "write " << idle_memsleep << " to " << sys_power_memsleep;
+            success = WriteStringToFd(idle_memsleep, memsleep_fd);
 	    if (success) {
-		    LOG(ERROR) << "v1 ===========last idle success, goto wait next enable sleep";
-		    autosuspend_enabled = false;
-		    continue;
+		    LOG(ERROR) << "v2 ===========last set lite -> mem_sleep success";
+		    LOG(ERROR) << "write " << sleep_state << " to " << sys_power_state;
+		    success = WriteStringToFd(sleep_state, state_fd);
+
+		    if (success) {
+			    LOG(ERROR) << "v2 ===========last idle success, goto wait next enable sleep";
+			    autosuspend_enabled = false;
+			    continue;
+		    }
+
+		    void (*func)(bool success) = wakeup_func;
+		    if (func != NULL) {
+			    (*func)(success);
+		    }
+	    } else {
+		    LOG(ERROR) << "v2 ===========last set lite -> mem_sleep failed";
 	    }
-            void (*func)(bool success) = wakeup_func;
-            if (func != NULL) {
-                (*func)(success);
-            }
         } else {
             PLOG(ERROR) << "error writing to " << sys_power_wakeup_count << " screen= " << start_idle;
         }
@@ -144,12 +154,33 @@ static int init_state_fd(void) {
     return 0;
 }
 
+static int init_memsleep_fd(void) {
+    if (memsleep_fd >= 0) {
+        return 0;
+    }
+
+    int fd = TEMP_FAILURE_RETRY(open(sys_power_memsleep, O_CLOEXEC | O_RDWR));
+    if (fd < 0) {
+        PLOG(ERROR) << "error opening " << sys_power_memsleep;
+        return -1;
+    }
+
+    memsleep_fd = fd;
+    LOG(INFO) << "init_memsleep_fd success";
+    return 0;
+}
+
 static int autosuspend_init(void) {
     if (autosuspend_is_init) {
         return 0;
     }
 
     int ret = init_state_fd();
+    if (ret < 0) {
+        return -1;
+    }
+
+    ret = init_memsleep_fd();
     if (ret < 0) {
         return -1;
     }
@@ -386,11 +417,13 @@ static int autosuspend_wakeup_count_idle(int screen_on)
     if ((wifi_state == 1) || (bt_state == 1) || (charge_state == 1) || (poweroff_state == 1) || (ebc_state == 1))
         return 0;
 
-    if (screen_on) {
-        ret = WriteStringToFd(idle_state, state_fd);
-        if (ret)
-            LOG(ERROR) << "Error writing " << idle_state << " to " << sys_power_state << ":" << strerror(ret);
-    }
+    /*
+     *if (screen_on) {
+     *    ret = WriteStringToFd(idle_state, state_fd);
+     *    if (ret)
+     *        LOG(ERROR) << "Error writing " << idle_state << " to " << sys_power_state << ":" << strerror(ret);
+     *}
+     */
     //else {
      //   ret = WriteStringToFd(sleep_state, state_fd);
      //   if (ret)
