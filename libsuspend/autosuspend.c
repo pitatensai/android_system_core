@@ -107,6 +107,11 @@ int autosuspend_idle(int on)
 {
     int ret;
    
+    ret = autosuspend_init();
+    if (ret) {
+        return ret;
+    }
+
     ALOGE("======autosuspend_idle screen_on %d", on);
     autosuspend_ops->idle(on);
 
