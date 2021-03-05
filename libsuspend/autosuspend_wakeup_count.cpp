@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <cutils/properties.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -62,6 +63,17 @@ static constexpr char wifi_state[] = "/sys/class/net/wlan0/carrier";
 static bool autosuspend_is_init = false;
 static int start_idle;
 static bool autosuspend_enabled;
+
+static int get_poweroff_state(void)
+{
+    char prop[255];
+
+    // 0: normal poweroff 1: lower poweroff  -1: not in poweroff state
+    property_get("sys.power.shutdown", prop, "-1");
+    bool noidle = ((prop[0] == '1') || (prop[0] == '0'));
+
+    return (noidle == 1) ? 1 : 0;
+}
 
 static void update_sleep_time(bool success) {
     if (success) {
@@ -105,6 +117,11 @@ static void* suspend_thread_func(void* arg __attribute__((unused))) {
 
         LOG(ERROR) << "write " << wakeup_count << " to wakeup_count " << start_idle;
         if (WriteStringToFd(wakeup_count, wakeup_count_fd) && start_idle) {
+	    if (get_poweroff_state()) {
+		    LOG(ERROR) << "autosleep thread exit because of system shutdown";
+		    break;
+	    }
+
             LOG(ERROR) << "write " << idle_memsleep << " to " << sys_power_memsleep;
             success = WriteStringToFd(idle_memsleep, memsleep_fd);
 	    if (success) {
@@ -135,6 +152,7 @@ static void* suspend_thread_func(void* arg __attribute__((unused))) {
             PLOG(ERROR) << "error releasing semaphore";
         }
     }
+
     return NULL;
 }
 
@@ -373,21 +391,6 @@ static int get_charge_state(void)
     return (buf == '1' || buf1 == '1');
 }
 
-static int get_poweroff_state(void)
-{
-#if 1
-    return 0;
-#else
-    char prop[255];
-
-    // 0: normal poweroff 1: lower poweroff  -1: not in poweroff state
-    property_get("sys.shutdown.nopower", prop, "-1");
-    bool noidle = ((prop[0] == '1') || (prop[0] == '0'));
-
-    return (noidle == 1) ? 1 : 0;
-#endif
-}
-
 static int autosuspend_wakeup_count_idle(int screen_on)
 {
     char buf[80];
@@ -402,34 +405,6 @@ static int autosuspend_wakeup_count_idle(int screen_on)
     start_idle =  screen_on;
 
     return 0;
-
-
-    ebc_state = get_ebc_state();
-    charge_state = get_charge_state();
-    wifi_state = get_wifi_state();
-    bt_state = get_bt_state();
-    poweroff_state = get_poweroff_state();
-
-    LOG(ERROR) << "autosuspend_idle: screen_on = " <<  screen_on << " wifi_state = "
-        << wifi_state << " bt_state = " << bt_state << " charge_state = " << charge_state
-        << " poweroff_state = " << poweroff_state << " ebc_state = " << ebc_state;
-
-    if ((wifi_state == 1) || (bt_state == 1) || (charge_state == 1) || (poweroff_state == 1) || (ebc_state == 1))
-        return 0;
-
-    /*
-     *if (screen_on) {
-     *    ret = WriteStringToFd(idle_state, state_fd);
-     *    if (ret)
-     *        LOG(ERROR) << "Error writing " << idle_state << " to " << sys_power_state << ":" << strerror(ret);
-     *}
-     */
-    //else {
-     //   ret = WriteStringToFd(sleep_state, state_fd);
-     //   if (ret)
-     //       LOG(ERROR) << "Error writing " << sleep_state << " to " << sys_power_state << ":" << strerror(ret);
-    //}
-    return ret;
 }
 
 static int autosuspend_wakeup_count_wake(void)
