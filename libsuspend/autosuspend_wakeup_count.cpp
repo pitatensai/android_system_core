@@ -91,11 +91,10 @@ static void* suspend_thread_func(void* arg __attribute__((unused))) {
     while (true) {
         update_sleep_time(success);
         usleep(sleep_time);
-	success = false;
+        success = false;
         LOG(ERROR) << "read wakeup_count";
         lseek(wakeup_count_fd, 0, SEEK_SET);
         std::string wakeup_count;
-
 
         if (!ReadFdToString(wakeup_count_fd, &wakeup_count)) {
             PLOG(ERROR) << "error reading from " << sys_power_wakeup_count;
@@ -116,34 +115,38 @@ static void* suspend_thread_func(void* arg __attribute__((unused))) {
         }
 
         LOG(ERROR) << "write " << wakeup_count << " to wakeup_count " << start_idle;
-        if (WriteStringToFd(wakeup_count, wakeup_count_fd) && start_idle) {
-	    if (get_poweroff_state()) {
-		    LOG(ERROR) << "autosleep thread exit because of system shutdown";
-		    break;
-	    }
+        if (WriteStringToFd(wakeup_count, wakeup_count_fd)) {
+            if (get_poweroff_state()) {
+                LOG(ERROR) << "autosleep thread exit because of system shutdown";
+                break;
+            }
+
+            if (!start_idle) {
+                    LOG(ERROR) << "v2 ===========cancle idle this time, goto wait next enable sleep";
+                    autosuspend_enabled = false;
+                    continue;
+            }
 
             LOG(ERROR) << "write " << idle_memsleep << " to " << sys_power_memsleep;
             success = WriteStringToFd(idle_memsleep, memsleep_fd);
-	    if (success) {
-		    LOG(ERROR) << "v2 ===========last set lite -> mem_sleep success";
-		    LOG(ERROR) << "write " << sleep_state << " to " << sys_power_state;
-		    success = WriteStringToFd(sleep_state, state_fd);
-
-		    if (success) {
-			    LOG(ERROR) << "v2 ===========last idle success, goto wait next enable sleep";
-			    autosuspend_enabled = false;
-			    continue;
-		    }
-
-		    void (*func)(bool success) = wakeup_func;
-		    if (func != NULL) {
-			    (*func)(success);
-		    }
-	    } else {
-		    LOG(ERROR) << "v2 ===========last set lite -> mem_sleep failed";
-	    }
+            if (success) {
+                LOG(ERROR) << "v2 ===========last set lite -> mem_sleep success";
+                LOG(ERROR) << "write " << sleep_state << " to " << sys_power_state;
+                success = WriteStringToFd(sleep_state, state_fd);
+                if (success) {
+                    LOG(ERROR) << "v2 ===========last idle success, goto wait next enable sleep";
+                    autosuspend_enabled = false;
+                    continue;
+                }
+                void (*func)(bool success) = wakeup_func;
+                if (func != NULL) {
+                    (*func)(success);
+                }
+            } else {
+                LOG(ERROR) << "v2 ===========last set lite -> mem_sleep failed";
+            }
         } else {
-            PLOG(ERROR) << "error writing to " << sys_power_wakeup_count << " screen= " << start_idle;
+            PLOG(ERROR) << "error writing to " << sys_power_wakeup_count;
         }
 
         LOG(ERROR) << "release sem";
@@ -409,6 +412,10 @@ static int autosuspend_wakeup_count_idle(int screen_on)
 
 static int autosuspend_wakeup_count_wake(void)
 {
+    //cancle idle
+    start_idle = 0;
+    LOG(ERROR) << "cancle this idle";
+
     return 0;
 }
 //idle end-------------------------------------------------------------------------------------------------------------------
