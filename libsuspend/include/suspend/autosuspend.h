@@ -63,8 +63,7 @@ int autosuspend_force_suspend(int timeout_ms);
  * aborted due to some reason.
  */
 void autosuspend_set_wakeup_callback(void (*func)(bool success));
-int autosuspend_idle(int screen_on);
-int autosuspend_wake(void);
+
 __END_DECLS
 
 #endif

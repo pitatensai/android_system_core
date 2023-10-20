@@ -20,8 +20,6 @@
 struct autosuspend_ops {
     int (*enable)(void);
     int (*disable)(void);
-    int (*idle)(int screen_on);
-    int (*wake)(void);
     int (*force_suspend)(int timeout_ms);
     void (*set_wakeup_callback)(void (*func)(bool success));
 };

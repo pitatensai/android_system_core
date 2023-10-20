@@ -25,6 +25,7 @@
 #include "autosuspend_ops.h"
 
 static struct autosuspend_ops* autosuspend_ops = NULL;
+static bool autosuspend_enabled;
 
 static int autosuspend_init(void) {
     if (autosuspend_ops != NULL) {
@@ -37,7 +38,7 @@ static int autosuspend_init(void) {
         return -1;
     }
 
-    ALOGE("autosuspend initialized");
+    ALOGV("autosuspend initialized");
     return 0;
 }
 
@@ -49,13 +50,18 @@ int autosuspend_enable(void) {
         return ret;
     }
 
-    ALOGE("autosuspend_enable");
+    ALOGV("autosuspend_enable");
+
+    if (autosuspend_enabled) {
+        return 0;
+    }
 
     ret = autosuspend_ops->enable();
     if (ret) {
         return ret;
     }
 
+    autosuspend_enabled = true;
     return 0;
 }
 
@@ -67,13 +73,18 @@ int autosuspend_disable(void) {
         return ret;
     }
 
-    ALOGE("autosuspend_disable");
+    ALOGV("autosuspend_disable");
+
+    if (!autosuspend_enabled) {
+        return 0;
+    }
 
     ret = autosuspend_ops->disable();
     if (ret) {
         return ret;
     }
 
+    autosuspend_enabled = false;
     return 0;
 }
 
@@ -85,7 +96,7 @@ int autosuspend_force_suspend(int timeout_ms) {
         return ret;
     }
 
-    ALOGE("autosuspend_force_suspend");
+    ALOGV("autosuspend_force_suspend");
 
     return autosuspend_ops->force_suspend(timeout_ms);
 }
@@ -98,43 +109,7 @@ void autosuspend_set_wakeup_callback(void (*func)(bool success)) {
         return;
     }
 
-    ALOGE("set_wakeup_callback");
+    ALOGV("set_wakeup_callback");
 
     autosuspend_ops->set_wakeup_callback(func);
 }
-
-int autosuspend_idle(int on)
-{
-    int ret;
-   
-    ret = autosuspend_init();
-    if (ret) {
-        return ret;
-    }
-
-    ALOGE("======autosuspend_idle screen_on %d", on);
-    autosuspend_ops->idle(on);
-
-    if (on)
-	    autosuspend_enable();
-
-    return 0;
-}
-
-int autosuspend_wake(void)
-{
-    int ret;
-
-    ret = autosuspend_init();
-    if (ret) {
-        return ret;
-    }
-
-    ret = autosuspend_ops->wake();
-    if (ret) {
-        return ret;
-    }
-
-    return 0;
-}
-
